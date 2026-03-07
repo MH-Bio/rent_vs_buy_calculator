@@ -3,7 +3,7 @@ This work is licensed under the Creative Commons Attribution 4.0 International L
 To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
 
 DISCLAIMER:
-This software is provided "as is", without warranty of any kind, express or implied.
+This software is provided "as is", without warranty of any kind, expressed or implied.
 The author makes no representations or guarantees regarding the accuracy,
 completeness, or reliability of the calculations or information contained in
 this code.
@@ -188,7 +188,7 @@ def oregon_marginal_tax_rate(income: float, filing_status: str="single") -> floa
         else:
             marginal_rate = .0475
     
-    if filing_status == "single":
+    if filing_status == "married":
         if income > 250000:
             marginal_rate = .099
         elif income > 22800:

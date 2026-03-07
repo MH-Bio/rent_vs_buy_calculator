@@ -3,7 +3,7 @@ This work is licensed under the Creative Commons Attribution 4.0 International L
 To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
 
 DISCLAIMER:
-This software is provided "as is", without warranty of any kind, express or implied.
+This software is provided "as is", without warranty of any kind, expressed or implied.
 The author makes no representations or guarantees regarding the accuracy,
 completeness, or reliability of the calculations or information contained in
 this code.
@@ -24,18 +24,10 @@ Date: March 7, 2026
 Author: Michael C. Hernandez
 email: michaelhern@hotmail.com
 """
-import os
 import sys
 import pandas as pd
 import argparse
 import tax_calculator
-from tabulate import tabulate
-
-# Colors
-NO_COLOR = "\033[0m"
-RED = "\033[31m"
-YELLOW = "\033[33m"
-GREEN = "\033[32m"
 
 # Amoritization stuff
 MONTH = "Month"
@@ -78,7 +70,7 @@ def calculator(
         house_price: float = 332900,
         down_payment: float = 0,
         mortgage_interest_rate: float = 6.25,
-        taxes: float = 85,
+        property_taxes: float = 85,
         insurance: float = 39,
         hoa: float = 249,
         hoa_increase: float =3,
@@ -86,12 +78,12 @@ def calculator(
         rental_management_fee: float = 10.0,
         vacancy_rate: float = 5.0,
         upkeep_cost: float = 1.0,
-        years_in_house: float = 1.0,
+        years_in_house: float = 30.0,
         house_rent: float = 2000,
-        rent_increase: float = 9.0,
-        your_rent: float =700,
+        rent_increase: float = 5.0,
+        your_rent: float = 700,
         stock_instead_of_house: bool = False,
-        sell_house_year: float = -1.0,
+        sell_house_year: float = 30.0,
         state_capital_gains: float = 9.9,
         annual_extra_payment: float = 0,
         extra_payment_years: float =0.0,
@@ -100,7 +92,7 @@ def calculator(
         inflation: float = 3.0,
         married: bool = False,
         income: float = 100000,):
-    HOUSE_SOLD = False
+    HOUSE_SOLD: bool = False
     
     # Convert human friendly numbers to actual percentage numbers
     mortgage_interest_rate /= 100
@@ -162,12 +154,11 @@ def calculator(
     ## Then you decide if they are going into the loan balance or the stock market
     # Figure out how much equity you have in the house
     # Figure out how much money you have in the stock market
-
     for month in range(df_schedule.shape[0]):
         # Annual inflation adjustment, these things only go up once per year
         if month % 12 == 0 and month != 0:
             hoa += (hoa * hoa_increase)
-            taxes += (taxes * inflation)
+            property_taxes += (property_taxes * inflation)
             insurance += (insurance * inflation)
             house_rent += (house_rent * rent_increase)
             your_rent += (your_rent * rent_increase)
@@ -191,7 +182,7 @@ def calculator(
 
         # Add in extra fees to your mortgage payment
         if HOUSE_SOLD == False:
-            df_schedule.loc[month, MONTHLY_PAYMENT] += (hoa + taxes + insurance)
+            df_schedule.loc[month, MONTHLY_PAYMENT] += (hoa + property_taxes + insurance)
 
         # If you are making extra payments, figure out how much is going to be paid
         extra_payment = 0
@@ -237,7 +228,6 @@ def calculator(
                         new_principal_list = [0] * (360 - len(old_principal_list))
                         new_balance_list = [0] * (360 - len(old_balance_list))
 
-                        #import pdb;pdb.set_trace()  # TODO: take a closer look at the amount you move over to the net worth column after selling the house
                         taxes_on_sale = tax_calculator.tax_on_home_sale(income=income,
                                                                         gross_sale_profit=gross_profit_after_closing,
                                                                         current_month=month,
@@ -281,30 +271,33 @@ def calculator(
                 
                 # Renting the house
                 else:
+                    
                     preliminary_rental_income = house_rent * (1 - rental_management_fee)
-
                     # deduct depreciation costs from the rental profit
                     rent_tax_rate = tax_calculator.federal_marginal_rate(income + preliminary_rental_income) + tax_calculator.oregon_marginal_tax_rate(income + preliminary_rental_income)
-                    preliminary_rental_income-= preliminary_rental_income * rent_tax_rate  # Deduct the tax paid from your rental income
+
+                    preliminary_rental_income -= preliminary_rental_income * rent_tax_rate  # Deduct the tax paid from your rental income
                     
                     # Account for operating costs
-                    vacency_rate_offset = preliminary_rental_income * (1- vacancy_rate)  # Apply the average vacancy rate every month
-                    vacency_rate_adjustment = preliminary_rental_income - vacency_rate_offset
+                    vacency_rate_offset = preliminary_rental_income * vacancy_rate  # Apply the average vacancy rate every month
+                    #vacency_rate_adjustment = preliminary_rental_income - vacency_rate_offset
 
-                    upkeep_offset = preliminary_rental_income * (1 - (upkeep_cost / 12))  # Apply the average annual upkeep rate every month
-                    upkeep_adjustment = preliminary_rental_income - upkeep_offset
+                    upkeep_offset = preliminary_rental_income * (upkeep_cost / 12)  # Apply the average annual upkeep rate every month
+                    #upkeep_adjustment = preliminary_rental_income - upkeep_offset
 
                     preliminary_rental_income -= your_rent  # subtract your rent from rental income because... you are also renting
-                    rental_income = preliminary_rental_income - vacency_rate_adjustment - upkeep_adjustment
+
+                    rental_income = preliminary_rental_income - vacency_rate_offset - upkeep_offset
         
         if HOUSE_SOLD == True:
             your_rent_payment[-1] = your_rent  # Gotta pay to live somewhere
 
         # deduct the rental income from the mortgage payment
         adjusted_monthly_payment = df_schedule.loc[month, MONTHLY_PAYMENT] - rental_income
-
+        
         # we can now figure out our cashflow
         # If the rent we bring in is greater than the monthly payment on the house, figure out where the money is going
+        
         if adjusted_monthly_payment < 0:
             extra_income = abs(adjusted_monthly_payment)
             df_schedule.loc[month, MONTHLY_PAYMENT] = 0
@@ -393,7 +386,7 @@ def main():
     parser.add_argument('--mortgage_interest_rate', type=float, default=6.250, help="Mortgage APR")
 
     # Ongoing Ownership Costs
-    parser.add_argument('-t', '--taxes', type=int, default=85, help="Monthly property taxes as a dollar amount")
+    parser.add_argument('-t', '--property_taxes', type=int, default=85, help="Monthly property property_taxes as a dollar amount")
     parser.add_argument('-i', '--insurance', type=int, default=39, help="Monthly house insurance")
     parser.add_argument('--hoa', type=int, default=249, help="Monthly HOA fee")
     parser.add_argument('--hoa_increase', type=int, default=3, help="Percent increase that you expect the HOA to go up each year")
@@ -403,12 +396,12 @@ def main():
     parser.add_argument('--upkeep_cost', type=float, default=5.0, help="upkeep costs: enter 1 for 1%")
 
     # Rental Scenario
-    parser.add_argument('--years_in_house', type=float, default=1.0, help="Years in the house before you start renting")
+    parser.add_argument('--years_in_house', type=float, default=30.0, help="Years in the house before you start renting")
     parser.add_argument('--house_rent', type=int, default=2000, help="Expected rent you extract from the house")
-    parser.add_argument('--rent_increase', type=float, default=9.0, help="Expected annual percent rent increase")
+    parser.add_argument('--rent_increase', type=float, default=5.0, help="Expected annual percent rent increase")
     parser.add_argument('--your_rent', type=int, default=700, help="Your rent if you don’t purchase a house / live elsewhere")
     parser.add_argument('--stock_instead_of_house', action='store_true', help="Invest leftover money from rental into the stock market instead of the house")
-    parser.add_argument('--sell_house_year', type=float, default=-1.0, help="Sell the house after X number of years")
+    parser.add_argument('--sell_house_year', type=float, default=30.0, help="Sell the house after X number of years")
     parser.add_argument('--state_capital_gains', type=float, default=9.9, help="Your state's capital gains tax, Oregon is 9.9\% for income above $125K")
 
     # Extra Payments
@@ -436,7 +429,7 @@ def main():
         mortgage_interest_rate=args.mortgage_interest_rate,
 
         # Ongoing Ownership Costs
-        taxes=args.taxes,
+        property_taxes=args.property_taxes,
         insurance=args.insurance,
         hoa=args.hoa,
         hoa_increase=args.hoa_increase,
