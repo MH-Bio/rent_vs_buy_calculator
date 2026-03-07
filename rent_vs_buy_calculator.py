@@ -88,7 +88,7 @@ def calculator(
         upkeep_cost: float = 1.0,
         years_in_house: float = 1.0,
         house_rent: float = 2000,
-        rent_increase: float = 5,
+        rent_increase: float = 9.0,
         your_rent: float =700,
         stock_instead_of_house: bool = False,
         sell_house_year: float = -1.0,
@@ -117,8 +117,6 @@ def calculator(
     if married:
         filing_status="married"
 
-    annual_house_appreciation = inflation + (annual_house_appreciation / 100)
-
     # Convert years to months
     total_num_payments: int = 30 * 12
     months_in_house: float = round(years_in_house * 12, 12)
@@ -132,10 +130,14 @@ def calculator(
 
     principal = house_price - down_payment
 
+    annual_house_appreciation = inflation + (annual_house_appreciation / 100)
+    
     # equity = home value - outstanding_balance
     home_value: float = house_price
     underwater: bool = False
     building_value = home_value * .8   # The value of the building sans the land it sits on top of
+
+    monthly_straight_line_depreciation_value = building_value / 330  # 330 months = 27.5 years
 
     # Create initial amoritization schedule
     headers: list[str] = [MONTH, MONTHLY_PAYMENT, INTEREST, PRINCIPAL, BALANCE]
@@ -150,7 +152,7 @@ def calculator(
     purchase_house_scenario_stock_market_balance: list[float] = [0]
     your_rent_payment: list[float] = []  # More just FYI rather than useful
     renting_scenario_stock_market_balance: list[float] = [down_payment]
-    net_worth_buy_offset_col: list[float] = []
+    #net_worth_buy_offset_col: list[float] = []
 
     # Adjust for inflation
     # Adjust the mortgage payment to include extra fees (PMI, HOA, etc.)
@@ -169,7 +171,6 @@ def calculator(
             insurance += (insurance * inflation)
             house_rent += (house_rent * rent_increase)
             your_rent += (your_rent * rent_increase)
-            building_value += (building_value * .8)
             income += (income * inflation)  # annual pay raise
         
         # Monthly adjustment, these things are always in flux, so we will approximate it by using a predictable average every month
@@ -215,30 +216,49 @@ def calculator(
 
                 # Sell the house
                 if sell_house_in_this_scenario == True and sell_house_month == month:
-                    profit_after_closing = home_value + df_schedule.loc[month, BALANCE]  # equity = home value - loan balance
-                    profit_after_closing -= (home_value * .09)  # closing costs
+                    gross_profit_after_closing = home_value + df_schedule.loc[month, BALANCE]  # The initial amount you have to work with: Home market value - your loan balance
+                    gross_profit_after_closing -= (home_value * .05)  # closing costs
+                    gross_profit_after_closing -= house_price
 
                     old_monthly_payment_list = df_schedule[MONTHLY_PAYMENT][:month].tolist()
                     old_interest_list = df_schedule[INTEREST][:month].tolist()
                     old_principal_list = df_schedule[PRINCIPAL][:month].tolist()
                     old_balance_list = df_schedule[BALANCE][:month].tolist()
-                    # Case 1: our profit_after_closing is positive or 0, add the profit_after_closing to the stock market
-                    if profit_after_closing >= 0:
+
+                    # Find out how much you have to pay in depreciation recapture
+                    depreciation_recapture_tax = tax_calculator.depreciation_recapture(current_month=month,
+                                                                                       months_in_house=months_in_house,
+                                                                                       monthly_depreciation_value=monthly_straight_line_depreciation_value)
+
+                    # Case 1: our gross_profit_after_closing is positive or 0, add the gross_profit_after_closing to the stock market
+                    if gross_profit_after_closing >= 0:
                         new_monthly_payment_list = [0] * (360 - len(old_monthly_payment_list))
                         new_interest_list = [0] * (360 - len(old_interest_list))
                         new_principal_list = [0] * (360 - len(old_principal_list))
                         new_balance_list = [0] * (360 - len(old_balance_list))
 
-                        taxes_on_sale = tax_calculator.tax_on_home_sale(income=income, gross_sale_profit=profit_on_house,current_month=month, months_in_house=months_in_house, filing_status=filing_status)
-                        profit_on_house = profit_after_closing * (1 - taxes_on_sale)
-                        purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + profit_on_house
+                        #import pdb;pdb.set_trace()  # TODO: take a closer look at the amount you move over to the net worth column after selling the house
+                        taxes_on_sale = tax_calculator.tax_on_home_sale(income=income,
+                                                                        gross_sale_profit=gross_profit_after_closing,
+                                                                        current_month=month,
+                                                                        months_in_house=months_in_house,
+                                                                        filing_status=filing_status)
+                        taxes_on_sale = (gross_profit_after_closing * taxes_on_sale) - depreciation_recapture_tax - tax_calculator.net_investment_income_tax(investment_income=gross_profit_after_closing,
+                                                                                                                                                             filing_status=filing_status)
+                        
+                        # House price - taxes
+                        net_profit_on_house = home_value - taxes_on_sale
+                        
+                        purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + net_profit_on_house
 
                     # Case 2: we are underwater on the house, in this case our payments continue until we hit a 0 balance
                     else:
-                        df_schedule.loc[month, BALANCE] -= profit_after_closing  # += because we are adding in an already negative number
+                        df_schedule.loc[month, BALANCE] -= (gross_profit_after_closing - depreciation_recapture_tax)  # += because we are adding in an already negative number
                         
                         # Next we need to recalculate the remaining amoritization schedule
-                        underwater_sched_list: list = generate_amortization_schedule(principal=abs(df_schedule.loc[month, BALANCE]), annual_rate=(mortgage_interest_rate * 100), months=total_num_payments - month)
+                        underwater_sched_list: list = generate_amortization_schedule(principal=abs(df_schedule.loc[month, BALANCE]),
+                                                                                     annual_rate=(mortgage_interest_rate * 100),
+                                                                                     months=total_num_payments - month)
                         underwater_schedule = pd.DataFrame(data=underwater_sched_list, columns=headers)
                         underwater_schedule[BALANCE] *= -1
 
@@ -262,6 +282,10 @@ def calculator(
                 # Renting the house
                 else:
                     preliminary_rental_income = house_rent * (1 - rental_management_fee)
+
+                    # deduct depreciation costs from the rental profit
+                    rent_tax_rate = tax_calculator.federal_marginal_rate(income + preliminary_rental_income) + tax_calculator.oregon_marginal_tax_rate(income + preliminary_rental_income)
+                    preliminary_rental_income-= preliminary_rental_income * rent_tax_rate  # Deduct the tax paid from your rental income
                     
                     # Account for operating costs
                     vacency_rate_offset = preliminary_rental_income * (1- vacancy_rate)  # Apply the average vacancy rate every month
@@ -318,21 +342,21 @@ def calculator(
             cashflow_column.append(CASHFLOW_NEUTRAL)
             df_schedule.loc[month, MONTHLY_PAYMENT] -= rental_income
 
-        # Now that we have figure out where the money is going we can figure out our home profit_after_closing
+        # Now that we have figure out where the money is going we can figure out our home gross_profit_after_closing
         rent_price_diff = df_schedule.loc[month, MONTHLY_PAYMENT] - your_rent
         if HOUSE_SOLD == False:
             equity_col.append(home_value + df_schedule.loc[month, BALANCE])
-            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1])
+            #net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1])
         elif HOUSE_SOLD == True and month == sell_house_month:
             equity_col.append(0)
             if rent_price_diff > 0:
                 purchase_house_scenario_stock_market_balance[-1] += rent_price_diff
-            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + profit_after_closing)
+            #net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + gross_profit_after_closing)
         else:
             equity_col.append(0)
             if rent_price_diff > 0:
                 purchase_house_scenario_stock_market_balance[-1] += rent_price_diff
-            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + profit_after_closing)
+            #net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + gross_profit_after_closing)
 
         # Next lets figure out the opportunity cost of renting vs buying
         # Assumptions:
@@ -351,7 +375,7 @@ def calculator(
     df_schedule[EQUITY] = equity_col
     df_schedule[CASHFLOW] = cashflow_column
     df_schedule[STOCK_BALANCE_BUY] = purchase_house_scenario_stock_market_balance
-    df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY] + net_worth_buy_offset_col
+    df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY] #+ net_worth_buy_offset_col
     df_schedule[YOUR_RENT] = your_rent_payment
     df_schedule[STOCK_BALANCE_RENT] = renting_scenario_stock_market_balance
 
@@ -381,7 +405,7 @@ def main():
     # Rental Scenario
     parser.add_argument('--years_in_house', type=float, default=1.0, help="Years in the house before you start renting")
     parser.add_argument('--house_rent', type=int, default=2000, help="Expected rent you extract from the house")
-    parser.add_argument('--rent_increase', type=int, default=5, help="Expected annual percent rent increase")
+    parser.add_argument('--rent_increase', type=float, default=9.0, help="Expected annual percent rent increase")
     parser.add_argument('--your_rent', type=int, default=700, help="Your rent if you don’t purchase a house / live elsewhere")
     parser.add_argument('--stock_instead_of_house', action='store_true', help="Invest leftover money from rental into the stock market instead of the house")
     parser.add_argument('--sell_house_year', type=float, default=-1.0, help="Sell the house after X number of years")
@@ -397,7 +421,7 @@ def main():
     parser.add_argument('--inflation', type=float, default=3.0, help="Annual inflation rate")
 
     # Your tax situation
-    parser.add_argument('--married', type=bool, action="store_true", help="If you are married enter this arguement, otherwise we assume you are single")
+    parser.add_argument('--married', action="store_true", help="If you are married enter this arguement, otherwise we assume you are single")
     parser.add_argument('--income', type=float, default=100000, help="Your gross income")
 
     # Run the parser and places the extracted data in a argparse.Namespace object
@@ -439,8 +463,8 @@ def main():
         inflation=args.inflation,
 
         # Your tax situation
-        married=args.married
-        income=args.income
+        married=args.married,
+        income=args.income,
     )
 
 if __name__ == '__main__':
