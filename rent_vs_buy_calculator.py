@@ -34,15 +34,9 @@ STOCK_BALANCE_RENT = "Stock Balance (Rent)"
 YOUR_RENT = "Your Rent Payment"
 
 # Cashflow Strings
-"""CASHFLOW_NEGATIVE = f"{RED}NEGATIVE (---){NO_COLOR}"
-CASHFLOW_NEUTRAL = f"{YELLOW}NEUTRAL (~0~){NO_COLOR}"
-CASHFLOW_POSITIVE = f"{GREEN}POSITIVE (+++){NO_COLOR}"""
 CASHFLOW_NEGATIVE = "NEGATIVE (---)"
 CASHFLOW_NEUTRAL = "NEUTRAL (~0~)"
 CASHFLOW_POSITIVE = "POSITIVE (+++)"
-
-
-
 
 pd.set_option('display.float_format', '{:.2f}'.format)
 
@@ -123,6 +117,7 @@ def calculator(
     headers: list[str] = [MONTH, MONTHLY_PAYMENT, INTEREST, PRINCIPAL, BALANCE]
     schedule = generate_amortization_schedule(principal=principal, annual_rate=(mortgage_interest_rate * 100), months=total_num_payments)
     df_schedule = pd.DataFrame(data=schedule, columns=headers)
+    df_schedule[BALANCE] *= -1
 
     # Initialize your lists
     equity_col: list[float] = []
@@ -131,6 +126,7 @@ def calculator(
     purchase_house_scenario_stock_market_balance: list[float] = [0]
     your_rent_payment: list[float] = []  # More just FYI rather than useful
     renting_scenario_stock_market_balance: list[float] = [down_payment]
+    net_worth_buy_offset_col: list[float] = []
 
     # Adjust for inflation
     # Adjust the mortgage payment to include extra fees (PMI, HOA, etc.)
@@ -162,7 +158,7 @@ def calculator(
             renting_scenario_stock_market_balance.append(new_renting_scenario_stock_market_balance)
 
         # Add in PMI if our equity is < 20%
-        if (df_schedule.loc[month, BALANCE]) > (house_price * .8):
+        if abs(df_schedule.loc[month, BALANCE]) > (house_price * .8):
             if HOUSE_SOLD == False:
                 df_schedule.loc[month, MONTHLY_PAYMENT] += pmi
 
@@ -176,24 +172,24 @@ def calculator(
             extra_payment = annual_extra_payment / 12
 
          # Next we need to deduct our extra payment from the loan balance
-        balance_after_extra_payment = df_schedule.loc[month, BALANCE] - extra_payment
-        if balance_after_extra_payment < 0:
+        balance_after_extra_payment = df_schedule.loc[month, BALANCE] + extra_payment
+        if balance_after_extra_payment > 0:
             df_schedule.loc[month, BALANCE] = 0
             if len(purchase_house_scenario_stock_market_balance) == 1:  # first month
                 purchase_house_scenario_stock_market_balance[-1] = abs(balance_after_extra_payment)
             else:  # all other months
-                purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + abs(balance_after_extra_payment)
+                purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + balance_after_extra_payment
 
         rental_income = 0
         your_rent_payment.append(0)
         # Rent or sell
         if HOUSE_SOLD == False:
-            if month > months_in_house:
+            if month >= months_in_house:
                 your_rent_payment[-1] = your_rent  # Gotta pay to live somewhere
 
                 # Sell the house
                 if sell_house_in_this_scenario == True and sell_house_month == month:
-                    profit_after_closing = home_value - df_schedule.loc[month, BALANCE]  # equity = home value - loan balance
+                    profit_after_closing = home_value + df_schedule.loc[month, BALANCE]  # equity = home value - loan balance
                     profit_after_closing -= (home_value * .09)  # closing costs
 
                     old_monthly_payment_list = df_schedule[MONTHLY_PAYMENT][:month].tolist()
@@ -213,17 +209,16 @@ def calculator(
 
                     # Case 2: we are underwater on the house, in this case our payments continue until we hit a 0 balance
                     else:
-                        #import pdb;pdb.set_trace()
-                        df_schedule.loc[month, BALANCE] += profit_after_closing  # += because we are adding in an already negative number
+                        df_schedule.loc[month, BALANCE] -= profit_after_closing  # += because we are adding in an already negative number
                         
                         # Next we need to recalculate the remaining amoritization schedule
-                        underwater_sched_list: list = generate_amortization_schedule(principal=df_schedule.loc[month, BALANCE], annual_rate=(mortgage_interest_rate * 100), months=total_num_payments - month)
+                        underwater_sched_list: list = generate_amortization_schedule(principal=abs(df_schedule.loc[month, BALANCE]), annual_rate=(mortgage_interest_rate * 100), months=total_num_payments - month)
                         underwater_schedule = pd.DataFrame(data=underwater_sched_list, columns=headers)
+                        underwater_schedule[BALANCE] *= -1
 
                         new_monthly_payment_list = underwater_schedule[MONTHLY_PAYMENT].tolist()
                         new_interest_list = underwater_schedule[INTEREST].tolist()
                         new_principal_list = underwater_schedule[PRINCIPAL].tolist()
-                        
                         new_balance_list = underwater_schedule[BALANCE].tolist()
 
                     df_schedule[MONTHLY_PAYMENT] = old_monthly_payment_list + new_monthly_payment_list
@@ -264,11 +259,11 @@ def calculator(
             extra_income = abs(adjusted_monthly_payment)
             df_schedule.loc[month, MONTHLY_PAYMENT] = 0
             cashflow_column.append(CASHFLOW_POSITIVE)
-            
+
             # If we have any extra rental income we need to figure out where that is going
             if stock_instead_of_house == False:  # If we decide to put the extra money into the loan balance
-                balance_after_rental_income = df_schedule.loc[month, BALANCE] - extra_income
-                if balance_after_rental_income < 0:
+                balance_after_rental_income = df_schedule.loc[month, BALANCE] + extra_income
+                if balance_after_rental_income > 0:
                     df_schedule.loc[month, BALANCE] = 0
                     
                     # first month
@@ -298,15 +293,20 @@ def calculator(
             df_schedule.loc[month, MONTHLY_PAYMENT] -= rental_income
 
         # Now that we have figure out where the money is going we can figure out our home profit_after_closing
+        rent_price_diff = df_schedule.loc[month, MONTHLY_PAYMENT] - your_rent
         if HOUSE_SOLD == False:
-            equity_col.append(home_value - df_schedule.loc[month, BALANCE])
+            equity_col.append(home_value + df_schedule.loc[month, BALANCE])
+            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1])
         elif HOUSE_SOLD == True and month == sell_house_month:
             equity_col.append(0)
+            if rent_price_diff > 0:
+                purchase_house_scenario_stock_market_balance[-1] += rent_price_diff
+            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + profit_after_closing)
         else:
             equity_col.append(0)
-
-
-        #net_worth_buy_scenario_col.append()
+            if rent_price_diff > 0:
+                purchase_house_scenario_stock_market_balance[-1] += rent_price_diff
+            net_worth_buy_offset_col.append(equity_col[-1] + purchase_house_scenario_stock_market_balance[-1] + profit_after_closing)
 
         # Next lets figure out the opportunity cost of renting vs buying
         # Assumptions:
@@ -325,7 +325,7 @@ def calculator(
     df_schedule[EQUITY] = equity_col
     df_schedule[CASHFLOW] = cashflow_column
     df_schedule[STOCK_BALANCE_BUY] = purchase_house_scenario_stock_market_balance
-    df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY]
+    df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY] + net_worth_buy_offset_col
     df_schedule[YOUR_RENT] = your_rent_payment
     df_schedule[STOCK_BALANCE_RENT] = renting_scenario_stock_market_balance
 
