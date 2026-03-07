@@ -14,6 +14,10 @@ is entirely at your own risk. Users should consult a qualified tax or financial
 professional before making any decisions based on the results produced by this
 program.
 
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF, OR INABILITY TO USE, THIS SOFTWARE.
+
 Figures out tax rates based on income
 
 Date: March 7, 2026
@@ -123,6 +127,8 @@ def tax_on_home_sale(income: float, gross_sale_profit: float, current_month: flo
             taxes_on_sale = gross_sale_profit - exempt_amount
             if taxes_on_sale < 0:
                 taxes_on_sale = 0
+            else:
+                taxes_on_sale = .15 + oregon_tax_rate(income=income + gross_sale_profit - exempt_amount, filing_status=filing_status)
         else:
             taxes_on_sale = .15 + oregon_tax_rate(income=income + gross_sale_profit, filing_status=filing_status)
 

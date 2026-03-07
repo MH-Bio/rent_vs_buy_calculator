@@ -14,6 +14,10 @@ is entirely at your own risk. Users should consult a qualified tax or financial
 professional before making any decisions based on the results produced by this
 program.
 
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF, OR INABILITY TO USE, THIS SOFTWARE.
+
 Goal: to find the cost / benefit of a house vs investing
 
 Date: March 7, 2026
