@@ -2,9 +2,21 @@
 This work is licensed under the Creative Commons Attribution 4.0 International License.
 To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
 
+DISCLAIMER:
+This software is provided "as is", without warranty of any kind, express or implied.
+The author makes no representations or guarantees regarding the accuracy,
+completeness, or reliability of the calculations or information contained in
+this code.
+
+This code is intended for educational and informational purposes only and
+should not be considered financial, legal, or tax advice. Use of this software
+is entirely at your own risk. Users should consult a qualified tax or financial
+professional before making any decisions based on the results produced by this
+program.
+
 Goal: to find the cost / benefit of a house vs investing
 
-Date: August 3, 2025
+Date: March 7, 2026
 Author: Michael C. Hernandez
 email: michaelhern@hotmail.com
 """
@@ -12,6 +24,7 @@ import os
 import sys
 import pandas as pd
 import argparse
+import tax_calculator
 from tabulate import tabulate
 
 # Colors
@@ -80,7 +93,9 @@ def calculator(
         extra_payment_years: float =0.0,
         stock_interest: float = 7,
         annual_house_appreciation: float = 1,
-        inflation: float = 3.0,):
+        inflation: float = 3.0,
+        married: bool = False,
+        income: float = 100000,):
     HOUSE_SOLD = False
     
     # Convert human friendly numbers to actual percentage numbers
@@ -93,6 +108,10 @@ def calculator(
     vacancy_rate /= 100
     upkeep_cost /= 100
     state_capital_gains /= 100
+
+    filing_status="single"
+    if married:
+        filing_status="married"
 
     annual_house_appreciation = inflation + (annual_house_appreciation / 100)
 
@@ -112,6 +131,7 @@ def calculator(
     # equity = home value - outstanding_balance
     home_value: float = house_price
     underwater: bool = False
+    building_value = home_value * .8   # The value of the building sans the land it sits on top of
 
     # Create initial amoritization schedule
     headers: list[str] = [MONTH, MONTHLY_PAYMENT, INTEREST, PRINCIPAL, BALANCE]
@@ -145,6 +165,8 @@ def calculator(
             insurance += (insurance * inflation)
             house_rent += (house_rent * rent_increase)
             your_rent += (your_rent * rent_increase)
+            building_value += (building_value * .8)
+            income += (income * inflation)  # annual pay raise
         
         # Monthly adjustment, these things are always in flux, so we will approximate it by using a predictable average every month
         if month != 0:
@@ -203,8 +225,8 @@ def calculator(
                         new_principal_list = [0] * (360 - len(old_principal_list))
                         new_balance_list = [0] * (360 - len(old_balance_list))
 
-                        # Apply the profit_after_closing to the stock market
-                        profit_on_house = profit_after_closing * (1 - (.15 + state_capital_gains))  # The 0.15 is to account for federal capital gains tax
+                        taxes_on_sale = tax_calculator.tax_on_home_sale(income=income, gross_sale_profit=profit_on_house,current_month=month, months_in_house=months_in_house, filing_status=filing_status)
+                        profit_on_house = profit_after_closing * (1 - taxes_on_sale)
                         purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + profit_on_house
 
                     # Case 2: we are underwater on the house, in this case our payments continue until we hit a 0 balance
@@ -361,7 +383,6 @@ def main():
     parser.add_argument('--sell_house_year', type=float, default=-1.0, help="Sell the house after X number of years")
     parser.add_argument('--state_capital_gains', type=float, default=9.9, help="Your state's capital gains tax, Oregon is 9.9\% for income above $125K")
 
-
     # Extra Payments
     parser.add_argument('--annual_extra_payment', type=int, default=0.0, help="Extra annual payment on the house")
     parser.add_argument('--extra_payment_years', type=float, default=0.0, help="Number of years to make the extra payment")
@@ -370,6 +391,10 @@ def main():
     parser.add_argument('--stock_interest', type=int, default=7, help="Expected percent stock market appreciation")
     parser.add_argument('--annual_house_appreciation', type=int, default=1, help="Expected percent home value appreciation")
     parser.add_argument('--inflation', type=float, default=3.0, help="Annual inflation rate")
+
+    # Your tax situation
+    parser.add_argument('--married', type=bool, action="store_true", help="If you are married enter this arguement, otherwise we assume you are single")
+    parser.add_argument('--income', type=float, default=100000, help="Your gross income")
 
     # Run the parser and places the extracted data in a argparse.Namespace object
     args = parser.parse_args()
@@ -408,30 +433,11 @@ def main():
         stock_interest=args.stock_interest,
         annual_house_appreciation=args.annual_house_appreciation,
         inflation=args.inflation,
-    )
 
-    """filename = "Variable_Down_Payment.xlsx"
-    if os.path.exists(filename):
-        writer = pd.ExcelWriter(
-            filename,
-            mode="a",
-            engine="openpyxl",
-            if_sheet_exists="new"
-        )
-    else:
-        writer = pd.ExcelWriter(
-            filename,
-            mode="w",
-            engine="openpyxl"
-        )
-    with writer:
-        df.to_excel(
-            excel_writer=writer,
-            sheet_name=f"Down Payment - {dp}",
-            float_format="%.2f",
-            #columns=[month_col, monthly_payment_col, interest_col, principal_col, loan_balance_col, equity_col, buy_stock_balance, net_worth_buy_column, your_rent_payment_col, rent_stock_balance],
-            index=False,
-        )"""
+        # Your tax situation
+        married=args.married
+        income=args.income
+    )
 
 if __name__ == '__main__':
     sys.exit(main())  # next section explains the use of sys.exit
