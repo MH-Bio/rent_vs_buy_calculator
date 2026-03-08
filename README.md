@@ -14,6 +14,17 @@ program.
 IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
 INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
 CONSEQUENTIAL DAMAGES ARISING FROM THE USE OF, OR INABILITY TO USE, THIS SOFTWARE.
+
+------------------------------------------------------------------------
+
+# License
+
+This software is licensed under the MIT License.
+
+Copyright (c) 2026 Michael Hernandez
+
+https://opensource.org/license/MIT
+
 ------------------------------------------------------------------------
 
 # Rent vs Buy Calculator
@@ -221,16 +232,6 @@ This model uses simplified financial assumptions including:
 -   simplified tax modeling
 
 Actual financial outcomes will vary.
-
-------------------------------------------------------------------------
-
-# License
-
-This software is licensed under the MIT License.
-
-Copyright (c) 2026 Michael Hernandez
-
-https://opensource.org/license/MIT
 
 ------------------------------------------------------------------------
 
