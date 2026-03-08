@@ -1,6 +1,9 @@
 """
-This work is licensed under the Creative Commons Attribution 4.0 International License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
+This software is licensed under the MIT License.
+
+Copyright (c) 2026 Michael Hernandez
+
+https://opensource.org/license/MIT
 
 DISCLAIMER:
 This software is provided "as is", without warranty of any kind, expressed or implied.

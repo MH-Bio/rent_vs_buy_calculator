@@ -226,9 +226,11 @@ Actual financial outcomes will vary.
 
 # License
 
-Creative Commons Attribution 4.0 International License
+This software is licensed under the MIT License.
 
-http://creativecommons.org/licenses/by/4.0/
+Copyright (c) 2026 Michael Hernandez
+
+https://opensource.org/license/MIT
 
 ------------------------------------------------------------------------
 
