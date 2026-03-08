@@ -167,11 +167,12 @@ def calculator(
         # Monthly adjustment, these things are always in flux, so we will approximate it by using a predictable average every month
         if month != 0:
             home_value += (home_value * (annual_house_appreciation / 12))
-            home_buy_scenario_monthly_stock_interest = purchase_house_scenario_stock_market_balance[-1] * ((stock_interest + inflation) / 12)
+            home_buy_scenario_monthly_stock_interest = purchase_house_scenario_stock_market_balance[-1] * ((1 + (stock_interest + inflation)) ** (1/12) - 1)
+            
             new_purchase_house_scenario_stock_market_balance = purchase_house_scenario_stock_market_balance[-1] + home_buy_scenario_monthly_stock_interest
             purchase_house_scenario_stock_market_balance.append(new_purchase_house_scenario_stock_market_balance)
 
-            renting_scenario_monthly_stock_interest = renting_scenario_stock_market_balance[-1] * ((stock_interest + inflation) / 12)
+            renting_scenario_monthly_stock_interest = renting_scenario_stock_market_balance[-1] * ((1 + (stock_interest + inflation)) ** (1/12) - 1)
             new_renting_scenario_stock_market_balance = renting_scenario_stock_market_balance[-1] + renting_scenario_monthly_stock_interest
             renting_scenario_stock_market_balance.append(new_renting_scenario_stock_market_balance)
 
@@ -207,39 +208,41 @@ def calculator(
 
                 # Sell the house
                 if sell_house_in_this_scenario == True and sell_house_month == month:
-                    gross_profit_after_closing = home_value + df_schedule.loc[month, BALANCE]  # The initial amount you have to work with: Home market value - your loan balance
-                    gross_profit_after_closing -= (home_value * .05)  # closing costs
-                    gross_profit_after_closing -= house_price
+                    closing_cost = (home_value * .05)  # closing costs
+                    gross_profit_after_closing = home_value + df_schedule.loc[month, BALANCE] - closing_cost
+                    taxable_profit = home_value - house_price  # Sale price - cost basis
+
+                    taxes_on_sale = tax_calculator.tax_on_home_sale(income=income,
+                                                                    gross_sale_profit=taxable_profit,
+                                                                    current_month=month,
+                                                                    months_in_house=months_in_house,
+                                                                    filing_status=filing_status)
+                    
+                    depreciation_recapture_tax = tax_calculator.depreciation_recapture(current_month=month,
+                                                                                       months_in_house=months_in_house,
+                                                                                       monthly_depreciation_value=monthly_straight_line_depreciation_value)
+                    
+                    net_investment_income_tax = tax_calculator.net_investment_income_tax(investment_income=taxable_profit, filing_status=filing_status)
+                    
+                    total_tax_paid = (taxable_profit * taxes_on_sale) - depreciation_recapture_tax - net_investment_income_tax
+
+                    net_profit_after_closing = gross_profit_after_closing - total_tax_paid
 
                     old_monthly_payment_list = df_schedule[MONTHLY_PAYMENT][:month].tolist()
                     old_interest_list = df_schedule[INTEREST][:month].tolist()
                     old_principal_list = df_schedule[PRINCIPAL][:month].tolist()
                     old_balance_list = df_schedule[BALANCE][:month].tolist()
-
                     # Find out how much you have to pay in depreciation recapture
-                    depreciation_recapture_tax = tax_calculator.depreciation_recapture(current_month=month,
-                                                                                       months_in_house=months_in_house,
-                                                                                       monthly_depreciation_value=monthly_straight_line_depreciation_value)
+                    
 
                     # Case 1: our gross_profit_after_closing is positive or 0, add the gross_profit_after_closing to the stock market
-                    if gross_profit_after_closing >= 0:
+                    if net_profit_after_closing >= 0:
                         new_monthly_payment_list = [0] * (360 - len(old_monthly_payment_list))
                         new_interest_list = [0] * (360 - len(old_interest_list))
                         new_principal_list = [0] * (360 - len(old_principal_list))
                         new_balance_list = [0] * (360 - len(old_balance_list))
-
-                        taxes_on_sale = tax_calculator.tax_on_home_sale(income=income,
-                                                                        gross_sale_profit=gross_profit_after_closing,
-                                                                        current_month=month,
-                                                                        months_in_house=months_in_house,
-                                                                        filing_status=filing_status)
-                        taxes_on_sale = (gross_profit_after_closing * taxes_on_sale) - depreciation_recapture_tax - tax_calculator.net_investment_income_tax(investment_income=gross_profit_after_closing,
-                                                                                                                                                             filing_status=filing_status)
                         
-                        # House price - taxes
-                        net_profit_on_house = home_value - taxes_on_sale
-                        
-                        purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + net_profit_on_house
+                        purchase_house_scenario_stock_market_balance[-1] += purchase_house_scenario_stock_market_balance[-2] + net_profit_after_closing
 
                     # Case 2: we are underwater on the house, in this case our payments continue until we hit a 0 balance
                     else:
@@ -371,8 +374,6 @@ def calculator(
     df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY] #+ net_worth_buy_offset_col
     df_schedule[YOUR_RENT] = your_rent_payment
     df_schedule[STOCK_BALANCE_RENT] = renting_scenario_stock_market_balance
-
-    print(df_schedule.to_string())
 
     return df_schedule
 
