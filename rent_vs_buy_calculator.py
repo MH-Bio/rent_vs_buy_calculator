@@ -41,6 +41,7 @@ STOCK_BALANCE_BUY = "Stock Balance (Buy)"
 NET_WORTH_BUY = "Net Worth (Buy)"
 STOCK_BALANCE_RENT = "Stock Balance (Rent)"
 YOUR_RENT = "Your Rent Payment"
+TOTAL_MONTHLY_PAYMENT = "Total Monthly Payment"
 
 # Cashflow Strings
 CASHFLOW_NEGATIVE = "NEGATIVE (---)"
@@ -86,7 +87,7 @@ def calculator(
         sell_house_year: float = 30.0,
         state_capital_gains: float = 9.9,
         annual_extra_payment: float = 0,
-        extra_payment_years: float =0.0,
+        extra_payment_years: float = 0.0,
         stock_interest: float = 7,
         annual_house_appreciation: float = 1,
         inflation: float = 3.0,
@@ -218,6 +219,7 @@ def calculator(
                                                                     months_in_house=months_in_house,
                                                                     filing_status=filing_status)
                     
+                    # Find out how much you have to pay in depreciation recapture
                     depreciation_recapture_tax = tax_calculator.depreciation_recapture(current_month=month,
                                                                                        months_in_house=months_in_house,
                                                                                        monthly_depreciation_value=monthly_straight_line_depreciation_value)
@@ -232,8 +234,6 @@ def calculator(
                     old_interest_list = df_schedule[INTEREST][:month].tolist()
                     old_principal_list = df_schedule[PRINCIPAL][:month].tolist()
                     old_balance_list = df_schedule[BALANCE][:month].tolist()
-                    # Find out how much you have to pay in depreciation recapture
-                    
 
                     # Case 1: our gross_profit_after_closing is positive or 0, add the gross_profit_after_closing to the stock market
                     if net_profit_after_closing >= 0:
@@ -274,7 +274,6 @@ def calculator(
                 
                 # Renting the house
                 else:
-                    
                     preliminary_rental_income = house_rent * (1 - rental_management_fee)
                     # deduct depreciation costs from the rental profit
                     rent_tax_rate = tax_calculator.federal_marginal_rate(income + preliminary_rental_income) + tax_calculator.oregon_marginal_tax_rate(income + preliminary_rental_income)
@@ -283,12 +282,9 @@ def calculator(
                     
                     # Account for operating costs
                     vacency_rate_offset = preliminary_rental_income * vacancy_rate  # Apply the average vacancy rate every month
-                    #vacency_rate_adjustment = preliminary_rental_income - vacency_rate_offset
-
                     upkeep_offset = preliminary_rental_income * (upkeep_cost / 12)  # Apply the average annual upkeep rate every month
-                    #upkeep_adjustment = preliminary_rental_income - upkeep_offset
 
-                    preliminary_rental_income -= your_rent  # subtract your rent from rental income because... you are also renting
+                    #preliminary_rental_income -= your_rent  # subtract your rent from rental income because... you are also renting
 
                     rental_income = preliminary_rental_income - vacency_rate_offset - upkeep_offset
         
@@ -309,7 +305,7 @@ def calculator(
             # If we have any extra rental income we need to figure out where that is going
             if stock_instead_of_house == False:  # If we decide to put the extra money into the loan balance
                 balance_after_rental_income = df_schedule.loc[month, BALANCE] + extra_income
-                if balance_after_rental_income > 0:
+                if (balance_after_rental_income - your_rent)> 0:  # TODO revisit this
                     df_schedule.loc[month, BALANCE] = 0
                     
                     # first month
@@ -364,7 +360,10 @@ def calculator(
         # At some point the cost of renting would possibly exceed a mortgage payment
         # we also need to consider the scenario where we live in a house for 5 years and then switch to renting
 
-        rent_vs_buy_cost_difference = df_schedule.loc[month, MONTHLY_PAYMENT] - your_rent
+        # Have to add back in rental income here because we previously deducted it from the monthly payment column
+        # so if we don't add it back in, it will prematurely make the rent vs buy cost difference incorrect
+        # i.e. You still have to pay the full value of the mortgage even if you are pulling in rental income
+        rent_vs_buy_cost_difference = (df_schedule.loc[month, MONTHLY_PAYMENT] + rental_income) - your_rent
         if rent_vs_buy_cost_difference > 0:
             renting_scenario_stock_market_balance[-1] += rent_vs_buy_cost_difference
 
@@ -374,6 +373,8 @@ def calculator(
     df_schedule[NET_WORTH_BUY] = df_schedule[EQUITY] + df_schedule[STOCK_BALANCE_BUY] #+ net_worth_buy_offset_col
     df_schedule[YOUR_RENT] = your_rent_payment
     df_schedule[STOCK_BALANCE_RENT] = renting_scenario_stock_market_balance
+
+    # print(df_schedule.to_string())
 
     return df_schedule
 

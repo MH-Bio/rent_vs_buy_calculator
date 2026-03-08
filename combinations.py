@@ -34,10 +34,20 @@ import rent_vs_buy_calculator as calculator
 from matplotlib.ticker import ScalarFormatter
 import itertools
 
+
+def progress_bar(total_combo, completed_combo):
+
+    percent = completed_combo / total_combo
+    num_equals = int(percent * 40)
+
+    bar = "[" + "=" * num_equals + " " * (40 - num_equals) + "]"
+    print(f"\r{bar}", end="")
+
+
 def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_rent: int = 1800, filing_status: str = "single", income: int = 100000):
 
     down_payments: list = []
-    for i in range(0, 50001, 10000):
+    for i in range(0, 60001, 10000):
         down_payments.append(i)
 
     sell_year: list = []
@@ -45,7 +55,7 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
         sell_year.append(i)
 
     years_in_house: list = []
-    for i in range(1, 5, 1):
+    for i in range(1, 16, 1):
         years_in_house.append(i)
     
     annual_extra_payment: list = []
@@ -53,7 +63,7 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
         annual_extra_payment.append(i)
 
     extra_payment_years: list = []
-    for i in range(5):
+    for i in range(6):
         extra_payment_years.append(i)
 
     stock_instead_of_house: list = [True, False]
@@ -91,6 +101,7 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
     scenario_results = []
 
     print(f"Running {len(all_combinations)} scenarios... This could take a while...")
+    completed_combos = 0
     for combination in all_combinations:
 
         df = calculator.calculator(
@@ -118,6 +129,10 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
             "stock_balance_rent": stock_balance_rent,
             **combination
         })
+        
+        completed_combos += 1
+
+        progress_bar(len(all_combinations), completed_combos)
 
     scenario_results.sort(key=lambda x: x["max_nw"], reverse=True)
 
@@ -137,12 +152,12 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
     with pd.ExcelWriter(excel_path, engine="xlsxwriter") as writer:
 
         # Save summary results
-        results_df.to_excel(writer, sheet_name="All combinations", index=False)
+        results_df.to_excel(writer, sheet_name="All combinations", float_format="%.2f", index=False)
 
         # Summary pages
-        best_down_payment.to_excel(writer, sheet_name="Best Down Payment", index=False)
-        best_sell_year.to_excel(writer, sheet_name="Best Sell Year", index=False)
-        best_extra_payment.to_excel(writer, sheet_name="Best Extra Payment", index=False)
+        best_down_payment.to_excel(writer, sheet_name="Best Down Payment", float_format="%.2f", index=False)
+        best_sell_year.to_excel(writer, sheet_name="Best Sell Year", float_format="%.2f", index=False)
+        best_extra_payment.to_excel(writer, sheet_name="Best Extra Payment", float_format="%.2f", index=False)
 
         # Rerun top 10 scenarios and save full dataframes
         for i, scenario in enumerate(top_10, start=1):
@@ -162,7 +177,7 @@ def combinations(home_value: int = 350000, interest_rate: float = 6.25, your_ren
             )
 
             params_df = pd.DataFrame([scenario])
-            params_df.to_excel(writer, sheet_name=f"Top {i}", index=False, startrow=0)
+            params_df.to_excel(writer, sheet_name=f"Top {i}", index=False, startrow=0, float_format="%.2f")
 
             df.to_excel(writer, sheet_name=f"Top {i}", index=False, startrow=5, float_format="%.2f")
 
